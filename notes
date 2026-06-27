@@ -1,0 +1,8 @@
+The Role of lru_cache
+The all-MiniLM-L6-v2 model file lives on your hard drive (roughly an 80MB file). Loading an AI
+ model involves reading that file, parsing the neural network architecture, and copying millions 
+ of mathematical weights into your computer's RAM. This takes a noticeable chunk of time (around 
+ 0.5 to 1.5 seconds).
+
+Without a cache, every single time your program calls _get_model(), it would destroy the old model 
+and reload it from scratch.
