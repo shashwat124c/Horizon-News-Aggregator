@@ -17,7 +17,7 @@ dependencies = [
     "python-dotenv>=1.0",
     "trafilatura>=1.9",   # article text extraction — used in Phase 4 but cheap to add now
     # Phase 2 (add when ready)
-    # "redis>=5.0",
+    "redis>=5.0",
     # "python-telegram-bot>=21.0",
     # Phase 3 (add when ready)
     # "APScheduler>=3.10",

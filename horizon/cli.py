@@ -15,7 +15,7 @@ import logging
 import os
 import sys
 from datetime import datetime
-
+from .redis_client import is_digest_sent_today, mark_digest_sent
 import click
 from dotenv import load_dotenv
 
@@ -65,6 +65,10 @@ def run(interests: str, top: int, verbose: bool) -> None:
     _configure_logging(verbose)
     logger = logging.getLogger(__name__)
 
+    if is_digest_sent_today():
+        click.echo("Digest already sent today — skipping.")
+        return
+
     # Lazy imports here so CLI --help is instant even before deps are installed
     from .fetcher import fetch_all
     from .scorer import build_profile_from_string, score_articles
@@ -92,11 +96,10 @@ def run(interests: str, top: int, verbose: bool) -> None:
     # Step 3: score and rank
     click.echo(f"⏳ Scoring against your profile (top {top})...")
     ranked = score_articles(articles, profile_vec, top_n=top)
-    click.echo(f"   Done. Score range: {ranked[-1].score:.3f} – {ranked[0].score:.3f}\n")
-
-    # Step 4: pretty-print
+    
     _print_digest(ranked)
-
+    
+    mark_digest_sent()
 
 def _print_digest(articles: list) -> None:
     """Render the digest as a terminal-friendly table."""
