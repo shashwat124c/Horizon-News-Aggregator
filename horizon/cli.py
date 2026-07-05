@@ -18,6 +18,7 @@ from datetime import datetime
 from .redis_client import is_digest_sent_today, mark_digest_sent
 import click
 from dotenv import load_dotenv
+from .dedup import dedup_by_url, dedup_by_similarity
 
 load_dotenv()
 
@@ -55,7 +56,17 @@ def cli() -> None:
 )
 @click.option("--top", "-n", default=10, show_default=True, help="Number of articles to show.")
 @click.option("--verbose", "-v", is_flag=True, help="Show DEBUG logs.")
-def run(interests: str, top: int, verbose: bool) -> None:
+@click.option(
+    "--force", "-f",
+    is_flag=True,
+    help="Ignore the check for whether a digest has already been sent today and run anyway.",
+)
+@click.option(
+    "--no-dedup",
+    is_flag=True,
+    help="Ignore the check for previously seen URLs (do not query or update Redis seen history).",
+)
+def run(interests: str, top: int, verbose: bool, force: bool, no_dedup: bool) -> None:
     """
     Fetch, score, and print today's digest to the console.
 
@@ -65,7 +76,7 @@ def run(interests: str, top: int, verbose: bool) -> None:
     _configure_logging(verbose)
     logger = logging.getLogger(__name__)
 
-    if is_digest_sent_today():
+    if not force and is_digest_sent_today():
         click.echo("Digest already sent today — skipping.")
         return
 
@@ -92,6 +103,9 @@ def run(interests: str, top: int, verbose: bool) -> None:
     if not articles:
         click.echo("❌ No articles fetched — check your network connection.", err=True)
         sys.exit(1)
+
+    articles = dedup_by_url(articles, ignore_seen=no_dedup)
+    click.echo(f"   After URL dedup: {len(articles)} articles\n")
 
     # Step 3: score and rank
     click.echo(f"⏳ Scoring against your profile (top {top})...")
