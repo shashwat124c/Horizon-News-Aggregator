@@ -6,3 +6,5 @@ The all-MiniLM-L6-v2 model file lives on your hard drive (roughly an 80MB file).
 
 Without a cache, every single time your program calls _get_model(), it would destroy the old model 
 and reload it from scratch.
+
+pip install -e . 

@@ -18,6 +18,7 @@ dependencies = [
     "trafilatura>=1.9",   # article text extraction — used in Phase 4 but cheap to add now
     # Phase 2 (add when ready)
     "redis>=5.0",
+    "requests"
     # "python-telegram-bot>=21.0",
     # Phase 3 (add when ready)
     # "APScheduler>=3.10",

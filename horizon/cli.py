@@ -19,6 +19,7 @@ from .redis_client import is_digest_sent_today, mark_digest_sent
 import click
 from dotenv import load_dotenv
 from .dedup import dedup_by_url, dedup_by_similarity
+from .delivery import send_telegram
 
 load_dotenv()
 
@@ -109,9 +110,17 @@ def run(interests: str, top: int, verbose: bool, force: bool, no_dedup: bool) ->
 
     # Step 3: score and rank
     click.echo(f"⏳ Scoring against your profile (top {top})...")
-    ranked = score_articles(articles, profile_vec, top_n=top)
-    
+    scored = score_articles(articles, profile_vec, top_n=top)
+
+    # now dedup against full embeddings
+    deduped = dedup_by_similarity(scored)
+    click.echo(f"   After similarity dedup: {len(deduped)} articles\n")
+    ranked = deduped[:top]
     _print_digest(ranked)
+
+    click.echo("⏳ Sending to Telegram...")
+    send_telegram(ranked)
+    click.echo("✅ Digest sent.\n")
     
     mark_digest_sent()
 
