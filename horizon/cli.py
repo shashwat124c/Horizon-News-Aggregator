@@ -20,6 +20,15 @@ import click
 from dotenv import load_dotenv
 from .dedup import dedup_by_url, dedup_by_similarity
 from .delivery import send_telegram
+from .database import init_db, save_profile, load_profile
+from .scorer import build_profile_from_string
+
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except AttributeError:
+        pass
 
 load_dotenv()
 
@@ -55,6 +64,24 @@ def cli() -> None:
     show_default=True,
     help="Plain-English interest description (overrides HORIZON_INTERESTS in .env).",
 )
+@click.option("--name", default="default", help="Profile name.")
+def init(interests: str, name: str):
+    """Create or overwrite your interest profile."""
+    init_db()
+
+    click.echo(f"Building profile from: {interests!r}")
+    embedding = build_profile_from_string(interests)
+
+    save_profile(name, embedding, interests)
+    click.echo(f"Profile '{name}' saved to database. Shape: {embedding.shape}")
+
+@cli.command()
+@click.option(
+    "--interests", "-i",
+    default=DEFAULT_INTERESTS,
+    show_default=True,
+    help="Plain-English interest description (overrides HORIZON_INTERESTS in .env).",
+)
 @click.option("--top", "-n", default=10, show_default=True, help="Number of articles to show.")
 @click.option("--verbose", "-v", is_flag=True, help="Show DEBUG logs.")
 @click.option(
@@ -72,7 +99,7 @@ def run(interests: str, top: int, verbose: bool, force: bool, no_dedup: bool) ->
     Fetch, score, and print today's digest to the console.
 
     Phase 1 entry point — no Redis, no Telegram, no DB. Just the
-    fetch → embed → rank → print pipeline.
+    fetch -> embed -> rank -> print pipeline.
     """
     _configure_logging(verbose)
     logger = logging.getLogger(__name__)
@@ -85,15 +112,25 @@ def run(interests: str, top: int, verbose: bool, force: bool, no_dedup: bool) ->
     from .fetcher import fetch_all
     from .scorer import build_profile_from_string, score_articles
 
+    # Step 1: build profile embedding
+    if interests != DEFAULT_INTERESTS:
+        click.echo("⏳ Building interest profile from override...")
+        profile_vec = build_profile_from_string(interests)
+    else:
+        click.echo("⏳ Loading interest profile...")
+        profile = load_profile()
+        if profile is None:
+            click.echo("No profile found. Run `horizon init --interests '...'` first.")
+            return
+        profile_vec = profile["embedding"]
+        interests = profile["interests"]
+
     click.echo(f"\n{'─' * 60}")
     click.echo(f"  🌅  Horizon  —  {datetime.now().strftime('%A, %d %B %Y')}")
     click.echo(f"{'─' * 60}")
     click.echo(f"  Interests: {interests}")
     click.echo(f"{'─' * 60}\n")
 
-    # Step 1: build profile embedding
-    click.echo("⏳ Building interest profile...")
-    profile_vec = build_profile_from_string(interests)
     click.echo(f"   Profile vector shape: {profile_vec.shape}, norm: {float((profile_vec**2).sum()**0.5):.4f}\n")
 
     # Step 2: fetch all sources concurrently
