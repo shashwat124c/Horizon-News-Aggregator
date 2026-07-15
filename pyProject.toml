@@ -21,7 +21,7 @@ dependencies = [
     "requests"
     # "python-telegram-bot>=21.0",
     # Phase 3 (add when ready)
-    # "APScheduler>=3.10",
+    "APScheduler>=3.10",
     # Phase 4 (add when ready)
     # "fastapi>=0.111",
     # "uvicorn>=0.29",

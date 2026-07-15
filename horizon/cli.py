@@ -22,6 +22,7 @@ from .dedup import dedup_by_url, dedup_by_similarity
 from .delivery import send_telegram
 from .database import init_db, save_profile, load_profile
 from .scorer import build_profile_from_string
+from .scheduler import start_scheduler
 
 if sys.platform == "win32":
     try:
@@ -205,6 +206,28 @@ def _print_digest(articles: list) -> None:
     click.echo(f"  {len(articles)} articles  •  Phase 1  •  Run `horizon run --help` for options")
     click.echo(f"{'─' * 60}\n")
 
+@cli.command()
+@click.option("--hour", default=7, help="Hour to run the digest (24h format).")
+@click.option("--minute", default=0, help="Minute to run the digest.")
+@click.option(
+    "--force", "-f",
+    is_flag=True,
+    help="Ignore the check for whether a digest has already been sent today and run anyway.",
+)
+@click.option(
+    "--no-dedup",
+    is_flag=True,
+    help="Ignore the check for previously seen URLs (do not query or update Redis seen history).",
+)
+def serve(hour: int, minute: int, force: bool, no_dedup: bool):
+    """Start the scheduler — runs the digest automatically every morning."""
+    import logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s  %(levelname)-8s  %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    start_scheduler(hour=hour, minute=minute, force=force, no_dedup=no_dedup)
 
 if __name__ == "__main__":
     cli()
