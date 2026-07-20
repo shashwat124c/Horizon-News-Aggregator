@@ -1,4 +1,10 @@
 import unittest
+import sys
+import os
+
+# Add parent directory to sys.path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from horizon.models import Article
 from horizon.scorer import build_profile_from_string, score_articles
 
@@ -38,7 +44,7 @@ class TestProfileScoring(unittest.TestCase):
         # They should be scored significantly higher than all other topics.
         top_titles = {ranked[0].title, ranked[1].title}
         self.assertIn("FastAPI tutorial", top_titles)
-        self.assertIn("Django autication", top_titles)
+        self.assertIn("Django authentication", top_titles)
         
         # Check that their scores are > 0.2
         self.assertGreater(ranked[0].score, 0.2)

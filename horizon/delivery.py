@@ -1,10 +1,14 @@
 import os
 import requests
 from .models import Article
+from .database import save_article, init_db
 
 TELEGRAM_API = "https://api.telegram.org"
+REDIRECT_BASE = os.getenv("REDIRECT_BASE", "http://localhost:5000")
+
 
 def send_telegram(articles: list[Article]) -> None:
+    init_db()
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
 
@@ -28,17 +32,20 @@ def send_telegram(articles: list[Article]) -> None:
 
 
 def _format_message(articles: list[Article]) -> str:
-    lines = ["🌅 <b>Today's Horizon Digest</b>\n"]
+    lines = ["<b>Today's Horizon Digest</b>\n"]
+    use_direct = os.getenv("USE_DIRECT_LINKS", "false").lower() == "true"
 
     for i, article in enumerate(articles, 1):
-        # clean up title — strip any HTML characters that would break Telegram's parser
+        article_id = save_article(article)
+        target_url = article.url if use_direct else f"{REDIRECT_BASE}/click/{article_id}"
+
         title = article.title.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
         summary = article.summary.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
         lines.append(
-            f"{i}. <b>{title}</b>\n"
+            f"{i}. <a href=\"{target_url}\"><b>{title}</b></a>\n"
             f"   {summary[:120]}...\n"
-            f"   <a href=\"{article.url}\">{article.source}</a>  •  score: {article.score:.2f}\n"
+            f"   <i>[{article.source}]</i>  •  score: {article.score:.2f}\n"
         )
 
     return "\n".join(lines)

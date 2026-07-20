@@ -23,6 +23,9 @@ from .delivery import send_telegram
 from .database import init_db, save_profile, load_profile
 from .scorer import build_profile_from_string
 from .scheduler import start_scheduler
+from .server import app as flask_app
+import threading
+
 
 if sys.platform == "win32":
     try:
@@ -73,7 +76,9 @@ def init(interests: str, name: str):
     click.echo(f"Building profile from: {interests!r}")
     embedding = build_profile_from_string(interests)
 
-    save_profile(name, embedding, interests)
+    save_profile("default", embedding, interests)
+    save_profile("original", embedding, interests)
+
     click.echo(f"Profile '{name}' saved to database. Shape: {embedding.shape}")
 
 @cli.command()
@@ -209,6 +214,7 @@ def _print_digest(articles: list) -> None:
 @cli.command()
 @click.option("--hour", default=7, help="Hour to run the digest (24h format).")
 @click.option("--minute", default=0, help="Minute to run the digest.")
+@click.option("--port", default=5000, help="Port for the redirect server.")
 @click.option(
     "--force", "-f",
     is_flag=True,
@@ -219,7 +225,7 @@ def _print_digest(articles: list) -> None:
     is_flag=True,
     help="Ignore the check for previously seen URLs (do not query or update Redis seen history).",
 )
-def serve(hour: int, minute: int, force: bool, no_dedup: bool):
+def serve(hour: int, minute: int, port:int, force: bool, no_dedup: bool):
     """Start the scheduler — runs the digest automatically every morning."""
     import logging
     logging.basicConfig(
@@ -227,6 +233,14 @@ def serve(hour: int, minute: int, force: bool, no_dedup: bool):
         format="%(asctime)s  %(levelname)-8s  %(message)s",
         datefmt="%H:%M:%S",
     )
+    flask_thread = threading.Thread(
+        target=lambda: flask_app.run(port=port, debug=False),
+        daemon=True,
+    )
+    flask_thread.start()
+
+    click.echo(f"Redirect server running on http://localhost:{port}")
+    click.echo(f"Digest scheduled at {hour:02d}:{minute:02d} daily")
     start_scheduler(hour=hour, minute=minute, force=force, no_dedup=no_dedup)
 
 if __name__ == "__main__":
