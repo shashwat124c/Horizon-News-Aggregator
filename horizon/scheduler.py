@@ -1,5 +1,5 @@
 import logging
-from apscheduler.schedulers.blocking import BlockingScheduler
+from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from datetime import datetime
 
@@ -39,26 +39,21 @@ def run_job(force: bool = False, no_dedup: bool = False):
     logger.info("Digest sent successfully")
 
 
-def start_scheduler(hour: int = 7, minute: int = 0, force: bool = False, no_dedup: bool = False):
+def start_scheduler(hour: int = 7, minute: int = 0, force: bool = False, no_dedup: bool = False) -> BackgroundScheduler:
     jobstore = SQLAlchemyJobStore(url="sqlite:///horizon.db")
 
-    scheduler = BlockingScheduler(jobstores={"default": jobstore})
+    scheduler = BackgroundScheduler(jobstores={"default": jobstore})
 
     scheduler.add_job(
         run_job,
         trigger="cron",
-        # hour=hour,
-        # minute=minute,
-        hour=datetime.now().hour,
-        minute=datetime.now().minute + 1,
+        hour=hour,
+        minute=minute,
         id="daily_digest",
         replace_existing=True,
         kwargs={"force": force, "no_dedup": no_dedup},
     )
 
-    logger.info(f"Scheduler started — digest will run at {hour:02d}:{minute:02d} daily (force={force}, no_dedup={no_dedup})")
-
-    try:
-        scheduler.start()
-    except KeyboardInterrupt:
-        logger.info("Scheduler stopped")
+    logger.info(f"Scheduler started in background — digest will run at {hour:02d}:{minute:02d} daily (force={force}, no_dedup={no_dedup})")
+    scheduler.start()
+    return scheduler

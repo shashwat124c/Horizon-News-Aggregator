@@ -1,10 +1,12 @@
 import os
 import requests
+from dotenv import load_dotenv
 from .models import Article
 from .database import save_article, init_db
 
+load_dotenv()
+
 TELEGRAM_API = "https://api.telegram.org"
-REDIRECT_BASE = os.getenv("REDIRECT_BASE", "http://localhost:5000")
 
 
 def send_telegram(articles: list[Article]) -> None:
@@ -34,17 +36,19 @@ def send_telegram(articles: list[Article]) -> None:
 def _format_message(articles: list[Article]) -> str:
     lines = ["<b>Today's Horizon Digest</b>\n"]
     use_direct = os.getenv("USE_DIRECT_LINKS", "false").lower() == "true"
+    redirect_base = os.getenv("REDIRECT_BASE", "http://localhost:5000")
 
     for i, article in enumerate(articles, 1):
         article_id = save_article(article)
-        target_url = article.url if use_direct else f"{REDIRECT_BASE}/click/{article_id}"
+        target_url = article.url if use_direct else f"{redirect_base}/click/{article_id}"
 
         title = article.title.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
         summary = article.summary.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
         lines.append(
-            f"{i}. <a href=\"{target_url}\"><b>{title}</b></a>\n"
+            f"{i}. <b>{title}</b>\n"
             f"   {summary[:120]}...\n"
+            f"   🔗 {target_url}\n"
             f"   <i>[{article.source}]</i>  •  score: {article.score:.2f}\n"
         )
 

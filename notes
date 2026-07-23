@@ -8,3 +8,8 @@ Without a cache, every single time your program calls _get_model(), it would des
 and reload it from scratch.
 
 pip install -e . 
+
+
+
+npx localtunnel --port 5000 --subdomain brown-glasses-live 
+python -m horizon.cli serve

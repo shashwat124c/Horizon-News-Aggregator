@@ -61,6 +61,99 @@ def cli() -> None:
     pass
 
 
+# ---------------------------------------------------------------------------
+# Topic probes used to interpret the profile vector in human-readable terms.
+# Add or remove topics freely — they're only used for display.
+# ---------------------------------------------------------------------------
+_PROBE_TOPICS = [
+    "Rust programming",
+    "distributed systems",
+    "AI infrastructure",
+    "compiler design",
+    "systems programming",
+    "machine learning",
+    "Python backend",
+    "web development",
+    "databases",
+    "DevOps / Kubernetes",
+    "security / cryptography",
+    "open source",
+    "startups / business",
+    "mathematics / algorithms",
+]
+
+
+def _render_profile(clear: bool = False) -> None:
+    """Load both profiles and print a drift summary to the terminal."""
+    from .database import load_profile
+    from .scorer import embed_texts, cosine_similarity
+
+    current  = load_profile("default")
+    original = load_profile("original")
+
+    if current is None or original is None:
+        click.echo("No profile found. Run `horizon init` first.")
+        return
+
+    cur_vec  = current["embedding"]
+    orig_vec = original["embedding"]
+
+    drift = 1.0 - cosine_similarity(cur_vec, orig_vec)   # 0 = identical, 2 = opposite
+
+    if clear:
+        click.clear()
+
+    click.echo(f"\n{'═' * 58}")
+    click.echo(f"  🧭  Horizon Profile  —  {datetime.now().strftime('%H:%M:%S')}")
+    click.echo(f"{'═' * 58}")
+    click.echo(f"  Original interests : {original['interests'][:54]}")
+    click.echo(f"  Profile drift      : {drift:.4f}  {'(no clicks yet)' if drift < 0.001 else ''}")
+    click.echo(f"{'─' * 58}\n")
+
+    # Score every probe against both vectors and show the delta
+    probe_vecs = embed_texts(_PROBE_TOPICS)   # shape (N, 384)
+    orig_scores = (probe_vecs @ orig_vec).tolist()
+    cur_scores  = (probe_vecs @ cur_vec).tolist()
+
+    rows = sorted(
+        zip(_PROBE_TOPICS, orig_scores, cur_scores),
+        key=lambda r: r[2],
+        reverse=True,
+    )
+
+    click.echo(f"  {'Topic':<30}  {'Original':>8}  {'Current':>8}  {'Delta':>8}")
+    click.echo(f"  {'─'*30}  {'─'*8}  {'─'*8}  {'─'*8}")
+    for topic, orig_s, cur_s in rows:
+        delta = cur_s - orig_s
+        delta_str = f"{delta:+.4f}"
+        color = "green" if delta > 0.002 else ("red" if delta < -0.002 else "white")
+        click.echo(
+            f"  {topic:<30}  {orig_s:>8.4f}  {cur_s:>8.4f}  "
+            + click.style(f"{delta_str:>8}", fg=color)
+        )
+
+    click.echo(f"\n{'═' * 58}\n")
+
+
+@cli.command()
+@click.option("--watch", "-w", is_flag=True, help="Poll every N seconds and refresh.")
+@click.option("--interval", "-n", default=10, show_default=True, help="Refresh interval in seconds (with --watch).")
+def profile(watch: bool, interval: int) -> None:
+    """Show how your interest profile has drifted after clicks."""
+    import time
+    if watch:
+        click.echo(f"Watching profile (refreshing every {interval}s — Ctrl+C to stop)...")
+        try:
+            while True:
+                _render_profile(clear=True)
+                time.sleep(interval)
+        except KeyboardInterrupt:
+            click.echo("Stopped.")
+    else:
+        _render_profile()
+
+
+
 @cli.command()
 @click.option(
     "--interests", "-i",
@@ -225,23 +318,24 @@ def _print_digest(articles: list) -> None:
     is_flag=True,
     help="Ignore the check for previously seen URLs (do not query or update Redis seen history).",
 )
-def serve(hour: int, minute: int, port:int, force: bool, no_dedup: bool):
-    """Start the scheduler — runs the digest automatically every morning."""
+def serve(hour: int, minute: int, port: int, force: bool, no_dedup: bool):
+    """Start the redirect server and background scheduler."""
     import logging
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s  %(levelname)-8s  %(message)s",
         datefmt="%H:%M:%S",
     )
-    flask_thread = threading.Thread(
-        target=lambda: flask_app.run(port=port, debug=False),
-        daemon=True,
-    )
-    flask_thread.start()
+
+    click.echo(f"Starting background scheduler (scheduled for {hour:02d}:{minute:02d} daily)...")
+    sched = start_scheduler(hour=hour, minute=minute, force=force, no_dedup=no_dedup)
 
     click.echo(f"Redirect server running on http://localhost:{port}")
-    click.echo(f"Digest scheduled at {hour:02d}:{minute:02d} daily")
-    start_scheduler(hour=hour, minute=minute, force=force, no_dedup=no_dedup)
+    try:
+        flask_app.run(port=port, debug=False)
+    except (KeyboardInterrupt, SystemExit):
+        click.echo("\nStopping background scheduler...")
+        sched.shutdown()
 
 if __name__ == "__main__":
     cli()

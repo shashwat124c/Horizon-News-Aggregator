@@ -42,14 +42,14 @@ def _update_profile(url: str, stored_embedding_bytes):
         article_embedding = embed_text(text[:2000])  # cap at 2000 chars, enough context
 
         # load current profile
-        current_profile = load_profile()
-        if current_profile is None:
+        current_data = load_profile()
+        if current_data is None:
             return
+        current_profile = current_data["embedding"]
 
         # load original profile (anchor) — stored separately
-        original_profile = load_profile(name="original")
-        if original_profile is None:
-            original_profile = current_profile.copy()
+        original_data = load_profile(name="original")
+        original_profile = original_data["embedding"] if original_data is not None else current_profile.copy()
 
         # weighted average nudge
         new_profile = 0.85 * current_profile + 0.15 * article_embedding
