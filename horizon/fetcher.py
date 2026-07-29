@@ -32,6 +32,14 @@ _SEMAPHORE_LIMIT = 10  # max simultaneous open HTTP connections
 # Individual source fetchers
 # ---------------------------------------------------------------------------
 
+FALLBACK_URLS: dict[str, str] = {
+    "stripe": "https://stripe.com/blog/feed.xml",
+    "shopify": "https://shopify.engineering/feed",
+    "uber": "https://www.uber.com/blog/engineering/rss/",
+    "acmqueue": "https://queue.acm.org/rss/feeds/queuecontent.xml",
+}
+
+
 async def _fetch_rss(
     session: aiohttp.ClientSession,
     url: str,
@@ -40,11 +48,25 @@ async def _fetch_rss(
     limit: int = 30,
 ) -> list[Article]:
     """Generic RSS/Atom fetcher. Used by most sources."""
-    async with sem: # Grab a semaphore
+    headers = None
+    if "reddit" in source_name:
+        headers = {"User-Agent": "python:horizon.digest:v0.1 (by /u/horizon_news)"}
+    elif source_name == "uber":
+        headers = {"Accept": "*/*"}
+
+    async with sem:
+        raw = None
         try:
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
-                resp.raise_for_status() # Did the request succeed?
-                raw = await resp.text() # Safe to use the response
+            async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                if resp.status == 200:
+                    raw = await resp.text()
+                elif source_name in FALLBACK_URLS:
+                    fallback = FALLBACK_URLS[source_name]
+                    async with session.get(fallback, headers=headers, timeout=aiohttp.ClientTimeout(total=15)) as f_resp:
+                        f_resp.raise_for_status()
+                        raw = await f_resp.text()
+                else:
+                    resp.raise_for_status()
         except Exception as exc:
             logger.warning("Failed to fetch %s (%s): %s", source_name, url, exc)
             return []
@@ -189,11 +211,32 @@ async def fetch_reddit_rust(
     )
 
 
-# ---------------------------------------------------------------------------
-# Public entrypoint
-# ---------------------------------------------------------------------------
+# Additional RSS/Atom engineering blogs and tech news feeds
+RSS_SOURCES: list[tuple[str, str]] = [
+    ("https://blog.cloudflare.com/rss",          "cloudflare"),
+    ("https://netflixtechblog.com/feed",          "netflix"),
+    ("https://eng.uber.com/feed",                 "uber"),
+    ("https://slack.engineering/rss",             "slack"),
+    ("https://engineering.fb.com/feed",           "meta"),
+    ("https://github.blog/engineering.atom",      "github"),
+    ("https://shopify.engineering/rss",           "shopify"),
+    ("https://stripe.com/blog/engineering.rss",   "stripe"),
+    ("https://martinfowler.com/feed.atom",        "martinfowler"),
+    ("https://brooker.co.za/blog/rss.xml",        "marc_brooker"),   # AWS distributed systems
+    ("https://matklad.github.io/feed.xml",        "matklad"),        # Rust, compilers
+    ("https://fasterthanli.me/index.xml",         "fasterthanli"),   # deep Rust posts
+    ("https://export.arxiv.org/rss/cs.LG",       "arxiv_ml"),
+    ("https://export.arxiv.org/rss/cs.CL",       "arxiv_nlp"),
+    ("https://huggingface.co/blog/feed.xml",      "huggingface"),
+    ("https://hnrss.org/frontpage?points=100",    "hackernews_top"),  # HN with 100+ points filter
+    ("https://www.reddit.com/r/golang/hot/.rss",  "reddit_golang"),
+    ("https://www.reddit.com/r/MachineLearning/hot/.rss", "reddit_ml"),
+    ("https://www.reddit.com/r/programming/hot/.rss",     "reddit_prog"),
+    ("https://arstechnica.com/feed",              "arstechnica"),
+    ("https://feeds.feedburner.com/ACMQueue-LatestArticles", "acmqueue"),
+]
 
-# Registry — add new fetchers here in Phase 5
+# Registry — custom API/feed fetchers
 _SOURCE_FETCHERS: list[
     Callable[[aiohttp.ClientSession, asyncio.Semaphore], Coroutine]
 ] = [
@@ -218,15 +261,22 @@ async def fetch_all() -> list[Article]:
     }
 
     async with aiohttp.ClientSession(headers=headers) as session:
+        # Custom API & custom RSS fetchers
         tasks = [fetcher(session, sem) for fetcher in _SOURCE_FETCHERS]
+
+        # Additional RSS feed sources
+        for url, name in RSS_SOURCES:
+            tasks.append(_fetch_rss(session, url, name, sem=sem))
+
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
     all_articles: list[Article] = []
+    total_sources = len(_SOURCE_FETCHERS) + len(RSS_SOURCES)
     for i, result in enumerate(results):
         if isinstance(result, Exception):
             logger.error("Source %d raised: %s", i, result)
         else:
             all_articles.extend(result)
 
-    logger.info("Fetched %d total articles from %d sources", len(all_articles), len(_SOURCE_FETCHERS))
+    logger.info("Fetched %d total articles from %d sources", len(all_articles), total_sources)
     return all_articles
