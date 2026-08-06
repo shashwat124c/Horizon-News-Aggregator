@@ -307,6 +307,7 @@ def _print_digest(articles: list) -> None:
 @cli.command()
 @click.option("--hour", default=7, help="Hour to run the digest (24h format).")
 @click.option("--minute", default=0, help="Minute to run the digest.")
+@click.option("--host", default="0.0.0.0", help="Host for the redirect server.")
 @click.option("--port", default=5000, help="Port for the redirect server.")
 @click.option(
     "--force", "-f",
@@ -318,7 +319,7 @@ def _print_digest(articles: list) -> None:
     is_flag=True,
     help="Ignore the check for previously seen URLs (do not query or update Redis seen history).",
 )
-def serve(hour: int, minute: int, port: int, force: bool, no_dedup: bool):
+def serve(hour: int, minute: int, host: str, port: int, force: bool, no_dedup: bool):
     """Start the redirect server and background scheduler."""
     import logging
     logging.basicConfig(
@@ -330,9 +331,9 @@ def serve(hour: int, minute: int, port: int, force: bool, no_dedup: bool):
     click.echo(f"Starting background scheduler (scheduled for {hour:02d}:{minute:02d} daily)...")
     sched = start_scheduler(hour=hour, minute=minute, force=force, no_dedup=no_dedup)
 
-    click.echo(f"Redirect server running on http://localhost:{port}")
+    click.echo(f"Redirect server running on http://{host}:{port}")
     try:
-        flask_app.run(port=port, debug=False)
+        flask_app.run(host=host, port=port, debug=False)
     except (KeyboardInterrupt, SystemExit):
         click.echo("\nStopping background scheduler...")
         sched.shutdown()

@@ -74,3 +74,7 @@ def _update_profile(url: str, stored_embedding_bytes):
 
     except Exception as e:
         logger.error("Profile update failed: %s", e)
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
